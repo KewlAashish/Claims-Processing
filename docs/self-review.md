@@ -7,6 +7,10 @@
 - Claim submission persists the claim, line items, and coverage usage in one service workflow and one commit.
 - Line-item explanations are generated from the same calculation values returned in the API response.
 - The API covers the complete reviewer demo path: setup, claim submission, inspection, payment, and dispute.
+- API tests cover multi-line claims that consume the same coverage bucket in sequence, missing coverage
+  rules, policy and enrollment date validation, payment transitions, dispute creation, duplicate line item
+  rejection, and unknown member handling.
+- Raw coding-agent JSONL session logs are included under `ai-artifacts/` for process review.
 
 ## Thin
 
@@ -30,5 +34,6 @@
 - Add Alembic migrations and a PostgreSQL profile.
 - Add optimistic locking or transactional row locking for usage updates in a production database.
 - Add structured audit events that avoid sensitive claim details.
-- Expand tests around multi-line claims that consume the same coverage bucket in sequence.
+- Add tests for repeated claims across the same benefit year, especially when earlier claims have already
+  consumed part or all of a coverage limit.
 - Add dispute resolution states if the product needs a human review workflow.
