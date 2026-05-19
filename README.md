@@ -112,4 +112,11 @@ curl -X POST http://localhost:8000/claims/{claim_id}/disputes ^
 - Explanations are generated from adjudication result values.
 - Diagnosis codes and provider names are stored because they are part of the assignment, but the app does
   not log them.
-- JSONL logs are intentionally not added to `ai-artifacts/` in this iteration.
+
+## Submission Checklist
+
+- Include the `.git/` directory in the final archive so reviewers can inspect commit history, sequencing,
+  and iteration.
+- Include raw coding-agent JSONL session logs in `ai-artifacts/`.
+- Include `app/`, `tests/`, `docs/`, `README.md`, `requirements.txt`, `pyproject.toml`, `Dockerfile`,
+  and `docker-compose.yml`.

@@ -11,9 +11,19 @@
 ## Thin
 
 - There is no Alembic migration setup; database creation uses SQLAlchemy metadata.
-- There is no authentication or role-based access control, so all endpoints are open in local/demo mode.
+- Claim submission and adjudication happen synchronously in one request. A higher-volume production phase
+  should separate `SUBMITTED` and `UNDER_REVIEW` into durable workflow states backed by a task queue and
+  worker processing.
 - There is no concurrency protection around coverage usage rows beyond the single-process SQLite demo path.
 - Error responses are intentionally simple and do not include structured application error codes.
+- Disputes can be opened, but there is no resolution workflow that sends the claim back through review.
+
+## Out Of Scope For This Assignment
+
+- Authentication and role-based access control.
+- Admin panels for managing policies, members, providers, or coverage catalogs.
+- Real payment rails, ledgers, email notifications, reporting, analytics, or provider/member account
+  management.
 
 ## Next Improvements
 

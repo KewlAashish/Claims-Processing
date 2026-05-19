@@ -11,6 +11,9 @@
 ## Domain Decisions
 
 - `POST /claims` adjudicates immediately. There is no manual review queue in the MVP.
+- The state model includes `SUBMITTED` and `UNDER_REVIEW`, but the MVP does not expose them as separate
+  asynchronous workflow steps. A later high-volume version should persist submitted claims first, enqueue
+  review/adjudication work, and make `UNDER_REVIEW` observable while workers process the queue.
 - Coverage rules are code-evaluated records, not a DSL. This keeps behavior deterministic and testable.
 - Coverage usage updates happen in the same commit as claim and line item persistence.
 - Missing coverage rules are treated as not covered.
@@ -23,6 +26,11 @@
 Diagnosis codes and provider names are stored but not logged by the application. Production hardening would
 need authentication, authorization, encryption at rest, audit logging, retention controls, and strict access
 policies. Those are documented as out of scope for this take-home build.
+
+Authentication, role-based access control, policy administration, reporting, notifications, provider account
+management, and real payment rails are treated as adjacent product concerns rather than core assignment
+scope. They are intentionally not built so the submission stays focused on claims adjudication, state, usage,
+and explanations.
 
 ## Known Trade-Offs
 

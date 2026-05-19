@@ -30,6 +30,18 @@ APPROVED | PARTIALLY_APPROVED -> PAID
 APPROVED | PARTIALLY_APPROVED | DENIED | PAID -> DISPUTED
 ```
 
+In this MVP, `POST /claims` performs submission and deterministic adjudication in one request. The service
+creates the claim as `UNDER_REVIEW` internally and then immediately finalizes it to `APPROVED`,
+`PARTIALLY_APPROVED`, or `DENIED` before returning the response. `SUBMITTED` and a durable
+`UNDER_REVIEW` work queue are modeled as lifecycle concepts, but they are not exposed as separate async
+workflow steps in the demo.
+
+A later high-volume phase should split this into explicit `SUBMITTED -> UNDER_REVIEW -> DECIDED`
+processing. That version would persist submitted claims first, enqueue adjudication or manual-review tasks,
+let workers claim review jobs, and make `UNDER_REVIEW` observable while the task queue is processing. It
+would also be the right point to add a line-item review state for cases where deterministic rules cannot
+decide a line item without human input.
+
 Line item statuses are `APPROVED`, `PARTIALLY_APPROVED`, and `DENIED`.
 
 After adjudication, claim status is aggregated from line items:
