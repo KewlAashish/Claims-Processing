@@ -36,4 +36,10 @@
 - Add structured audit events that avoid sensitive claim details.
 - Add tests for repeated claims across the same benefit year, especially when earlier claims have already
   consumed part or all of a coverage limit.
+- Split synchronous adjudication into a queue-backed workflow where `SUBMITTED`, `UNDER_REVIEW`, manual
+  review, and retry states are observable.
+- Add secured member and reviewer interfaces for claim tracking, queue management, assignment, notes, and
+  audit history.
+- Explore a GenAI-assisted manual review layer for unstructured policy documents or claim packets, with
+  citations, human approval, model/version logging, and sensitive-data controls.
 - Add dispute resolution states if the product needs a human review workflow.

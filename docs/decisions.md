@@ -39,3 +39,50 @@ and explanations.
 - Coverage types are normalized to uppercase strings rather than modeled as a fixed enum, because insurers often add products.
 - Payment is a state transition only. No real payment rail or ledger is implemented.
 - Disputes are recorded but not resolved.
+
+## Future Scope
+
+The MVP intentionally keeps adjudication synchronous and deterministic. If this moved toward production,
+the next step would be an event-driven claims workflow where claim submission, adjudication, manual review,
+payment, and dispute handling are separate observable stages.
+
+### Queue-Backed Claim Workflow
+
+`POST /claims` should persist a claim as `SUBMITTED` and return quickly. Background workers would then pull
+claim work items from a queue, move them into `UNDER_REVIEW`, run deterministic adjudication, and finalize
+them as approved, partially approved, denied, or routed for manual review. This would make `SUBMITTED` and
+`UNDER_REVIEW` meaningful operational states rather than internal concepts.
+
+Important production concerns in that model include idempotency keys for duplicate submissions, worker
+leasing, retries, dead-letter handling, priority queues, status history, and queue-depth/latency metrics.
+
+### Secured Operations Interfaces
+
+A production version should include secured interfaces for both members and internal claim reviewers.
+Members need a simple claim tracker showing the current stage, decision, payment status, dispute status,
+and explanations. Reviewers need a queue interface for claims that need manual review, disputes, missing
+documentation, failed adjudication, or escalation.
+
+The reviewer queue should support filtering by status, claim age, amount, coverage type, policy, and SLA;
+assignment and ownership; notes; decision overrides with required reasons; and a full audit trail for every
+state transition and reviewer action.
+
+### GenAI-Assisted Manual Review
+
+If policy documents, claim packets, provider notes, or coverage rules become more unstructured, a GenAI
+layer could assist human reviewers. The deterministic adjudication engine should remain the source of truth
+for structured rules. GenAI should be used as a reviewer-assist layer, not as the final decision maker.
+
+Useful AI-assisted workflows include summarizing claim packets, extracting candidate coverage terms from
+policy documents, suggesting likely decisions with citations, flagging missing documentation, comparing
+claim facts against policy language, and drafting member-facing explanations for reviewer approval.
+
+The AI layer would need guardrails: cite source text or rule IDs for recommendations, store model and prompt
+versions, log retrieved sources, require human confirmation for final decisions, and avoid sending
+unnecessary sensitive health data to model providers.
+
+### Production Hardening
+
+The system would also need PostgreSQL, Alembic migrations, row locking or optimistic concurrency for coverage
+usage updates, authentication, role-based access control, encryption at rest, retention policies, structured
+audit events, request IDs, rate limits, metrics, and traceable adjudication events.
