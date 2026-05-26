@@ -54,6 +54,9 @@ Each scenario calls the running HTTP API, prints the workflow stages in the term
 and writes a markdown report to `demo/output/`. Set `DEMO_API_URL` if the API is not
 running on `http://localhost:8000`.
 
+For repeatable manual API checks, use the copy-pasteable curl runbook in
+[`docs/manual-api-curls.md`](docs/manual-api-curls.md).
+
 ## Demo Flow
 
 Create a member:
