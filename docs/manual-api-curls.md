@@ -4,17 +4,28 @@ Use this runbook for repeatable manual checks against the running FastAPI servic
 The commands are written for PowerShell and use `curl.exe` so they do not collide
 with PowerShell's `curl` alias.
 
+PowerShell can strip JSON quotes when a JSON string is passed directly to a native
+command. To avoid that, these snippets write each JSON body to a temporary file and
+send it with `curl.exe --data-binary "@file"`.
+
 ## Start The API
 
 ```powershell
 uvicorn app.main:app --reload
 ```
 
-In another terminal, set a base URL and a unique run ID:
+In another terminal, set a base URL, run ID, and reusable payload helper:
 
 ```powershell
 $BaseUrl = "http://localhost:8000"
 $RunId = Get-Date -Format "yyyyMMddHHmmss"
+$PayloadPath = Join-Path $env:TEMP "claims-api-payload-$RunId.json"
+
+function Set-ApiPayload {
+  param([hashtable]$Payload)
+  $Payload | ConvertTo-Json -Depth 20 -Compress |
+    Set-Content -LiteralPath $PayloadPath -NoNewline -Encoding utf8
+}
 ```
 
 ## Health Check
@@ -28,9 +39,15 @@ curl.exe "$BaseUrl/health"
 Create a member:
 
 ```powershell
+Set-ApiPayload @{
+  full_name = "Manual Approved Member"
+  date_of_birth = "1990-01-01"
+  external_member_id = "MANUAL-APPROVED-$RunId"
+}
+
 $Member = curl.exe -s -X POST "$BaseUrl/members" `
   -H "Content-Type: application/json" `
-  -d "{""full_name"":""Manual Approved Member"",""date_of_birth"":""1990-01-01"",""external_member_id"":""MANUAL-APPROVED-$RunId""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $Member | ConvertTo-Json -Depth 10
@@ -39,9 +56,16 @@ $Member | ConvertTo-Json -Depth 10
 Create a policy:
 
 ```powershell
+Set-ApiPayload @{
+  policy_number = "MANUAL-APPROVED-POL-$RunId"
+  name = "Manual Approved Plan"
+  effective_start_date = "2026-01-01"
+  effective_end_date = "2026-12-31"
+}
+
 $Policy = curl.exe -s -X POST "$BaseUrl/policies" `
   -H "Content-Type: application/json" `
-  -d "{""policy_number"":""MANUAL-APPROVED-POL-$RunId"",""name"":""Manual Approved Plan"",""effective_start_date"":""2026-01-01"",""effective_end_date"":""2026-12-31""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $Policy | ConvertTo-Json -Depth 10
@@ -50,9 +74,16 @@ $Policy | ConvertTo-Json -Depth 10
 Add a covered OPD rule with no deductible:
 
 ```powershell
+Set-ApiPayload @{
+  coverage_type = "OPD"
+  annual_limit = "10000"
+  deductible_amount = "0"
+  covered = $true
+}
+
 $CoverageRule = curl.exe -s -X POST "$BaseUrl/policies/$($Policy.id)/coverage-rules" `
   -H "Content-Type: application/json" `
-  -d "{""coverage_type"":""OPD"",""annual_limit"":""10000"",""deductible_amount"":""0"",""covered"":true}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $CoverageRule | ConvertTo-Json -Depth 10
@@ -61,9 +92,15 @@ $CoverageRule | ConvertTo-Json -Depth 10
 Enroll the member in the policy:
 
 ```powershell
+Set-ApiPayload @{
+  policy_id = $Policy.id
+  effective_start_date = "2026-01-01"
+  effective_end_date = "2026-12-31"
+}
+
 $Enrollment = curl.exe -s -X POST "$BaseUrl/members/$($Member.id)/policies" `
   -H "Content-Type: application/json" `
-  -d "{""policy_id"":""$($Policy.id)"",""effective_start_date"":""2026-01-01"",""effective_end_date"":""2026-12-31""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $Enrollment | ConvertTo-Json -Depth 10
@@ -72,9 +109,24 @@ $Enrollment | ConvertTo-Json -Depth 10
 Submit a covered claim:
 
 ```powershell
+Set-ApiPayload @{
+  member_id = $Member.id
+  policy_id = $Policy.id
+  diagnosis_code = "J10"
+  provider_name = "City Clinic"
+  line_items = @(
+    @{
+      coverage_type = "OPD"
+      service_date = "2026-03-01"
+      description = "Consultation"
+      submitted_amount = "2000"
+    }
+  )
+}
+
 $Claim = curl.exe -s -X POST "$BaseUrl/claims" `
   -H "Content-Type: application/json" `
-  -d "{""member_id"":""$($Member.id)"",""policy_id"":""$($Policy.id)"",""diagnosis_code"":""J10"",""provider_name"":""City Clinic"",""line_items"":[{""coverage_type"":""OPD"",""service_date"":""2026-03-01"",""description"":""Consultation"",""submitted_amount"":""2000""}]}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $Claim | ConvertTo-Json -Depth 10
@@ -99,29 +151,55 @@ $PaidClaim | ConvertTo-Json -Depth 10
 Create an isolated member and policy:
 
 ```powershell
+Set-ApiPayload @{
+  full_name = "Manual Deductible Member"
+  date_of_birth = "1990-01-01"
+  external_member_id = "MANUAL-DEDUCTIBLE-$RunId"
+}
+
 $DeductibleMember = curl.exe -s -X POST "$BaseUrl/members" `
   -H "Content-Type: application/json" `
-  -d "{""full_name"":""Manual Deductible Member"",""date_of_birth"":""1990-01-01"",""external_member_id"":""MANUAL-DEDUCTIBLE-$RunId""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
+
+Set-ApiPayload @{
+  policy_number = "MANUAL-DEDUCTIBLE-POL-$RunId"
+  name = "Manual Deductible Plan"
+  effective_start_date = "2026-01-01"
+  effective_end_date = "2026-12-31"
+}
 
 $DeductiblePolicy = curl.exe -s -X POST "$BaseUrl/policies" `
   -H "Content-Type: application/json" `
-  -d "{""policy_number"":""MANUAL-DEDUCTIBLE-POL-$RunId"",""name"":""Manual Deductible Plan"",""effective_start_date"":""2026-01-01"",""effective_end_date"":""2026-12-31""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 ```
 
 Add an OPD rule with a `1000` deductible, then enroll:
 
 ```powershell
+Set-ApiPayload @{
+  coverage_type = "OPD"
+  annual_limit = "10000"
+  deductible_amount = "1000"
+  covered = $true
+}
+
 curl.exe -s -X POST "$BaseUrl/policies/$($DeductiblePolicy.id)/coverage-rules" `
   -H "Content-Type: application/json" `
-  -d "{""coverage_type"":""OPD"",""annual_limit"":""10000"",""deductible_amount"":""1000"",""covered"":true}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json `
   | ConvertTo-Json -Depth 10
 
+Set-ApiPayload @{
+  policy_id = $DeductiblePolicy.id
+  effective_start_date = "2026-01-01"
+  effective_end_date = "2026-12-31"
+}
+
 curl.exe -s -X POST "$BaseUrl/members/$($DeductibleMember.id)/policies" `
   -H "Content-Type: application/json" `
-  -d "{""policy_id"":""$($DeductiblePolicy.id)"",""effective_start_date"":""2026-01-01"",""effective_end_date"":""2026-12-31""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json `
   | ConvertTo-Json -Depth 10
 ```
@@ -129,9 +207,24 @@ curl.exe -s -X POST "$BaseUrl/members/$($DeductibleMember.id)/policies" `
 Submit a claim where the deductible reduces payment:
 
 ```powershell
+Set-ApiPayload @{
+  member_id = $DeductibleMember.id
+  policy_id = $DeductiblePolicy.id
+  diagnosis_code = "J10"
+  provider_name = "City Clinic"
+  line_items = @(
+    @{
+      coverage_type = "OPD"
+      service_date = "2026-03-01"
+      description = "Deductible consultation"
+      submitted_amount = "2000"
+    }
+  )
+}
+
 $DeductibleClaim = curl.exe -s -X POST "$BaseUrl/claims" `
   -H "Content-Type: application/json" `
-  -d "{""member_id"":""$($DeductibleMember.id)"",""policy_id"":""$($DeductiblePolicy.id)"",""diagnosis_code"":""J10"",""provider_name"":""City Clinic"",""line_items"":[{""coverage_type"":""OPD"",""service_date"":""2026-03-01"",""description"":""Deductible consultation"",""submitted_amount"":""2000""}]}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $DeductibleClaim | ConvertTo-Json -Depth 10
@@ -145,29 +238,55 @@ Expected behavior: claim status is `PARTIALLY_APPROVED`, with decision code
 Create an isolated member and policy:
 
 ```powershell
+Set-ApiPayload @{
+  full_name = "Manual Limit Member"
+  date_of_birth = "1990-01-01"
+  external_member_id = "MANUAL-LIMIT-$RunId"
+}
+
 $LimitMember = curl.exe -s -X POST "$BaseUrl/members" `
   -H "Content-Type: application/json" `
-  -d "{""full_name"":""Manual Limit Member"",""date_of_birth"":""1990-01-01"",""external_member_id"":""MANUAL-LIMIT-$RunId""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
+
+Set-ApiPayload @{
+  policy_number = "MANUAL-LIMIT-POL-$RunId"
+  name = "Manual Limit Plan"
+  effective_start_date = "2026-01-01"
+  effective_end_date = "2026-12-31"
+}
 
 $LimitPolicy = curl.exe -s -X POST "$BaseUrl/policies" `
   -H "Content-Type: application/json" `
-  -d "{""policy_number"":""MANUAL-LIMIT-POL-$RunId"",""name"":""Manual Limit Plan"",""effective_start_date"":""2026-01-01"",""effective_end_date"":""2026-12-31""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 ```
 
 Add a limited OPD rule, then enroll:
 
 ```powershell
+Set-ApiPayload @{
+  coverage_type = "OPD"
+  annual_limit = "10000"
+  deductible_amount = "0"
+  covered = $true
+}
+
 curl.exe -s -X POST "$BaseUrl/policies/$($LimitPolicy.id)/coverage-rules" `
   -H "Content-Type: application/json" `
-  -d "{""coverage_type"":""OPD"",""annual_limit"":""10000"",""deductible_amount"":""0"",""covered"":true}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json `
   | ConvertTo-Json -Depth 10
 
+Set-ApiPayload @{
+  policy_id = $LimitPolicy.id
+  effective_start_date = "2026-01-01"
+  effective_end_date = "2026-12-31"
+}
+
 curl.exe -s -X POST "$BaseUrl/members/$($LimitMember.id)/policies" `
   -H "Content-Type: application/json" `
-  -d "{""policy_id"":""$($LimitPolicy.id)"",""effective_start_date"":""2026-01-01"",""effective_end_date"":""2026-12-31""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json `
   | ConvertTo-Json -Depth 10
 ```
@@ -175,9 +294,24 @@ curl.exe -s -X POST "$BaseUrl/members/$($LimitMember.id)/policies" `
 Use most of the annual limit with the first claim:
 
 ```powershell
+Set-ApiPayload @{
+  member_id = $LimitMember.id
+  policy_id = $LimitPolicy.id
+  diagnosis_code = "J10"
+  provider_name = "City Clinic"
+  line_items = @(
+    @{
+      coverage_type = "OPD"
+      service_date = "2026-03-01"
+      description = "Large consultation package"
+      submitted_amount = "9000"
+    }
+  )
+}
+
 $FirstLimitClaim = curl.exe -s -X POST "$BaseUrl/claims" `
   -H "Content-Type: application/json" `
-  -d "{""member_id"":""$($LimitMember.id)"",""policy_id"":""$($LimitPolicy.id)"",""diagnosis_code"":""J10"",""provider_name"":""City Clinic"",""line_items"":[{""coverage_type"":""OPD"",""service_date"":""2026-03-01"",""description"":""Large consultation package"",""submitted_amount"":""9000""}]}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $FirstLimitClaim | ConvertTo-Json -Depth 10
@@ -186,9 +320,24 @@ $FirstLimitClaim | ConvertTo-Json -Depth 10
 Submit a second claim that exceeds the remaining limit:
 
 ```powershell
+Set-ApiPayload @{
+  member_id = $LimitMember.id
+  policy_id = $LimitPolicy.id
+  diagnosis_code = "J10"
+  provider_name = "City Clinic"
+  line_items = @(
+    @{
+      coverage_type = "OPD"
+      service_date = "2026-04-01"
+      description = "Follow-up consultation package"
+      submitted_amount = "2500"
+    }
+  )
+}
+
 $SecondLimitClaim = curl.exe -s -X POST "$BaseUrl/claims" `
   -H "Content-Type: application/json" `
-  -d "{""member_id"":""$($LimitMember.id)"",""policy_id"":""$($LimitPolicy.id)"",""diagnosis_code"":""J10"",""provider_name"":""City Clinic"",""line_items"":[{""coverage_type"":""OPD"",""service_date"":""2026-04-01"",""description"":""Follow-up consultation package"",""submitted_amount"":""2500""}]}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $SecondLimitClaim | ConvertTo-Json -Depth 10
@@ -202,29 +351,55 @@ code `PARTIAL_LIMIT_REMAINING`.
 Create an isolated member and policy:
 
 ```powershell
+Set-ApiPayload @{
+  full_name = "Manual Denied Member"
+  date_of_birth = "1990-01-01"
+  external_member_id = "MANUAL-DENIED-$RunId"
+}
+
 $DeniedMember = curl.exe -s -X POST "$BaseUrl/members" `
   -H "Content-Type: application/json" `
-  -d "{""full_name"":""Manual Denied Member"",""date_of_birth"":""1990-01-01"",""external_member_id"":""MANUAL-DENIED-$RunId""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
+
+Set-ApiPayload @{
+  policy_number = "MANUAL-DENIED-POL-$RunId"
+  name = "Manual Denied Plan"
+  effective_start_date = "2026-01-01"
+  effective_end_date = "2026-12-31"
+}
 
 $DeniedPolicy = curl.exe -s -X POST "$BaseUrl/policies" `
   -H "Content-Type: application/json" `
-  -d "{""policy_number"":""MANUAL-DENIED-POL-$RunId"",""name"":""Manual Denied Plan"",""effective_start_date"":""2026-01-01"",""effective_end_date"":""2026-12-31""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 ```
 
 Add an uncovered dental rule, then enroll:
 
 ```powershell
+Set-ApiPayload @{
+  coverage_type = "DENTAL"
+  annual_limit = "0"
+  deductible_amount = "0"
+  covered = $false
+}
+
 curl.exe -s -X POST "$BaseUrl/policies/$($DeniedPolicy.id)/coverage-rules" `
   -H "Content-Type: application/json" `
-  -d "{""coverage_type"":""DENTAL"",""annual_limit"":""0"",""deductible_amount"":""0"",""covered"":false}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json `
   | ConvertTo-Json -Depth 10
 
+Set-ApiPayload @{
+  policy_id = $DeniedPolicy.id
+  effective_start_date = "2026-01-01"
+  effective_end_date = "2026-12-31"
+}
+
 curl.exe -s -X POST "$BaseUrl/members/$($DeniedMember.id)/policies" `
   -H "Content-Type: application/json" `
-  -d "{""policy_id"":""$($DeniedPolicy.id)"",""effective_start_date"":""2026-01-01"",""effective_end_date"":""2026-12-31""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json `
   | ConvertTo-Json -Depth 10
 ```
@@ -232,9 +407,24 @@ curl.exe -s -X POST "$BaseUrl/members/$($DeniedMember.id)/policies" `
 Submit a dental claim:
 
 ```powershell
+Set-ApiPayload @{
+  member_id = $DeniedMember.id
+  policy_id = $DeniedPolicy.id
+  diagnosis_code = "K08"
+  provider_name = "Dental Clinic"
+  line_items = @(
+    @{
+      coverage_type = "DENTAL"
+      service_date = "2026-03-01"
+      description = "Dental cleaning"
+      submitted_amount = "1500"
+    }
+  )
+}
+
 $DeniedClaim = curl.exe -s -X POST "$BaseUrl/claims" `
   -H "Content-Type: application/json" `
-  -d "{""member_id"":""$($DeniedMember.id)"",""policy_id"":""$($DeniedPolicy.id)"",""diagnosis_code"":""K08"",""provider_name"":""Dental Clinic"",""line_items"":[{""coverage_type"":""DENTAL"",""service_date"":""2026-03-01"",""description"":""Dental cleaning"",""submitted_amount"":""1500""}]}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $DeniedClaim | ConvertTo-Json -Depth 10
@@ -248,9 +438,13 @@ Expected behavior: claim status is `DENIED`, with decision code
 Use any existing decided claim ID from the previous sections, then create a dispute:
 
 ```powershell
+Set-ApiPayload @{
+  reason = "Member believes the provider submitted additional records."
+}
+
 $Dispute = curl.exe -s -X POST "$BaseUrl/claims/$($DeniedClaim.id)/disputes" `
   -H "Content-Type: application/json" `
-  -d "{""reason"":""Member believes the provider submitted additional records.""}" `
+  --data-binary "@$PayloadPath" `
   | ConvertFrom-Json
 
 $Dispute | ConvertTo-Json -Depth 10
@@ -276,9 +470,36 @@ curl.exe -i "$BaseUrl/claims/not-a-real-claim-id"
 Submit a claim with duplicate line items:
 
 ```powershell
+Set-ApiPayload @{
+  member_id = $Member.id
+  policy_id = $Policy.id
+  diagnosis_code = "J10"
+  provider_name = "City Clinic"
+  line_items = @(
+    @{
+      coverage_type = "OPD"
+      service_date = "2026-03-01"
+      description = "Duplicate item"
+      submitted_amount = "100"
+    }
+    @{
+      coverage_type = "OPD"
+      service_date = "2026-03-01"
+      description = "Duplicate item"
+      submitted_amount = "100"
+    }
+  )
+}
+
 curl.exe -i -X POST "$BaseUrl/claims" `
   -H "Content-Type: application/json" `
-  -d "{""member_id"":""$($Member.id)"",""policy_id"":""$($Policy.id)"",""diagnosis_code"":""J10"",""provider_name"":""City Clinic"",""line_items"":[{""coverage_type"":""OPD"",""service_date"":""2026-03-01"",""description"":""Duplicate item"",""submitted_amount"":""100""},{""coverage_type"":""OPD"",""service_date"":""2026-03-01"",""description"":""Duplicate item"",""submitted_amount"":""100""}]}"
+  --data-binary "@$PayloadPath"
 ```
 
 Expected behavior: response status is `422`.
+
+Remove the temporary payload file when you finish:
+
+```powershell
+Remove-Item -LiteralPath $PayloadPath -Force -ErrorAction SilentlyContinue
+```
